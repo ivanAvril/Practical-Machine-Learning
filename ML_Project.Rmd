@@ -1,0 +1,136 @@
+---
+title: "Practical Machine Learning Project"
+author: Ivan Castillo
+output: html_document
+---
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The training data for this project are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har]. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+
+##Analysis
+
+###Load Data Libraries and Seed
+
+```{r warning=FALSE, echo=TRUE, message=FALSE}
+library(caret)
+library(randomForest)
+
+set.seed(1234)
+```
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+setwd("/home/ivan/Documents/coursera/practicalMachineLearning/project")
+```
+
+We load data from our local working directory. We define two variables $training$ and $testing$ with the data to analyze. 
+
+```{r warning=FALSE, echo=TRUE}
+dataTraining <- read.csv(file="pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+dataTesting <- read.csv(file="pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+###Cross validation
+
+Use 70% of training set data to built a model, and use the rest to test the model
+
+```{r echo=TRUE}
+train <- createDataPartition(y=dataTraining$classe,p=.70,list=F)
+training <- dataTraining[train,]
+testing <- dataTraining[-train,]
+```
+
+###Cleaning the training data
+
+```{r echo=TRUE, results=FALSE}
+#exclude not numeric variables
+colSelect <- grep("name|timestamp|window|X", colnames(training), value=F)
+trainingCl <- training[,-colSelect] 
+
+#select variables with high (over 95%) missing data --> exclude them from the analysis
+trainingCl[trainingCl==""] <- NA
+NArate <- apply(trainingCl, 2, function(x) sum(is.na(x)))/nrow(trainingCl)
+trainingCl <- trainingCl[!(NArate>0.95)]
+summary(trainingCl)
+```
+
+###Basic exploratory data analysis
+
+Since the number of variables are still over 52, PCA is applied
+
+```{r echo=TRUE, results=FALSE}
+n <- 52
+preProc <- preProcess(trainingCl[,1:n],method="pca",thresh=.8) #12 components are required
+preProc <- preProcess(trainingCl[,1:n],method="pca",thresh=.9) #18 components are required
+preProc <- preProcess(trainingCl[,1:n],method="pca",thresh=.95) #25 components are required
+
+preProc <- preProcess(trainingCl[,1:n],method="pca",pcaComp=25) 
+preProc$rotation
+trainingPC <- predict(preProc,trainingCl[,1:n])
+```
+
+###Random forest
+
+Apply ramdom forest method (non-bionominal outcome & large sample size)
+
+```{r echo=TRUE}
+modFitRF <- randomForest(trainingCl$classe ~ ., data=trainingPC, do.trace=F)
+print(modFitRF) # view results 
+```
+
+```{r echo=TRUE}
+importance(modFitRF) # importance of each predictor
+```
+
+###Check with test set
+
+```{r echo=TRUE}
+testingCl <- testing[,-colSelect] #Removing identifier, timestamp, and window data 
+
+#select variables with high (over 95%) missing data and exclude them from the analysis
+testingCl[testingCl==""] <- NA
+NArate <- apply(testingCl, 2, function(x) sum(is.na(x)))/nrow(testingCl)
+testingCl <- testingCl[!(NArate>0.95)]
+
+#PCA applied
+testingPC <- predict(preProc,testingCl[,1:52])
+
+#Predicting the outcome with Random Forest method, thereby cross-tabulating observed and predicted classes
+confusion_matrix <- confusionMatrix(testingCl$classe,predict(modFitRF,testingPC))
+confusion_matrix
+```
+
+```{r echo=TRUE, results=FALSE}
+#Out of sample error
+out_of_sample_error<- 1 - confusion_matrix$overall[1]
+```
+
+Model Accuracy is 97.82 and no information rate is 0.2873
+
+###Predicting class of 20 test data
+
+```{r echo=TRUE}
+testdataCl <- dataTesting[,-colSelect]
+testdataCl[testdataCl==""] <- NA
+NArate <- apply(testdataCl, 2, function(x) sum(is.na(x)))/nrow(testdataCl)
+testdataCl <- testdataCl[!(NArate>0.95)]
+testdataPC <- predict(preProc,testdataCl[,1:52])
+testdataCl$classe <- predict(modFitRF,testdataPC)
+
+testdataCl$classe
+```
+
+
+###Discussion
+
+The model statistics showed that the built model had the overall accuracy of 97% for the testing set, which is not overlapping with observations used to built the model. The sensitivity was in between 94%-99% and the specificity was over 99% for all classes (class A-E, total 5 classes. class A is the data from correct exercise while the other classes were data from exercises done in a wrong way). Overall, the model is well developed to predict the exercise classes during weight lifting.
+
