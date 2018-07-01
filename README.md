@@ -1,6 +1,6 @@
 ## Prediction Assignment Writeup
 
-This [link to results](http://rpubs.com/castillo_avril/401087) lets you see the results 
+This [link](http://rpubs.com/castillo_avril/401087) lets you see the results 
 
 ## Background
 
